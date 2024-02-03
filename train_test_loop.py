@@ -12,7 +12,7 @@ class train_test_loop_class:
                  val_loader:torch.utils.data.DataLoader,
                  test_loader:torch.utils.data.DataLoader,
                  epochs: int, print_every_n_batch: int,
-                 device,model_name, optimizer,calculate_accuracy,problem_type,overwrite_message):
+                 device,model_name, optimizer,calculate_accuracy,problem_type,overwrite_message,update_loss_fn=False):
         
         # initialize variables
         self.train_loader,self.test_loader, self.val_loader = train_loader,test_loader, val_loader
@@ -61,9 +61,10 @@ class train_test_loop_class:
                 }
         
         # update and import loss_functions class
-        print("update and import the loss_functions module\n")
-        update_file = update_utilities_class(file_name="loss_functions.py",current_path=os.getcwd())
-        update_file.run()
+        if update_loss_fn:
+            print("update and import the loss_functions module\n")
+            update_file = update_utilities_class(file_name="loss_functions.py",current_path=os.getcwd())
+            update_file.run()
         
         from loss_functions import loss_functions_class
         loss_function = loss_functions_class()
