@@ -2,7 +2,7 @@ import os
 import shutil
 
 class update_utilities_class:
-    def __init__(self,file_name:str, current_path:str, utils_path:str = r'C:\Study\Study Material\Project Space\GitHub\helper_functions'):
+    def __init__(self,file_name:str, current_path:str, utils_path:str = r'..\helper_functions'):
         self.file_name = file_name
         self.utilities_path = utils_path
         self.destination_path = current_path

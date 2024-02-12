@@ -1,0 +1,13 @@
+conv_network.py
+{
+    1. add residual network
+    2. provide parameter for batchnorm momentum based on batch size
+
+}
+
+train_test_loop.py
+{
+    1. add lr tuning option
+    2. add graph for loss 
+    3. add option to ignore print
+}
