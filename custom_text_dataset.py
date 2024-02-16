@@ -1,3 +1,5 @@
+import torch
+
 class unsupervisedTokenizedTextDataset(torch.utils.data.Dataset):
     def __init__(self,full_txt,block_size,predict_size=1):
         self.txt = full_txt
