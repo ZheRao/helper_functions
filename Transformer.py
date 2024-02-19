@@ -1,4 +1,5 @@
 import torch
+import math
 
 # class for self-attention calculation from a single head
 # take input x, project to Q,K,V, apply the self-attention formula (Q @ K.T / sqrt(head_size)) @ V
@@ -107,7 +108,7 @@ class PositionalEncoding(torch.nn.Module):
 
 
 # create transformer!!!
-class Transformer(torch.nn.Module):
+class TransformerClass(torch.nn.Module):
     def __init__(self,vocab_size,emb_dim,n_layer,num_heads,block_size,dropout_rate_attention,dropout_rate_ff,dropout_rate_pos_enc,is_decoder=True,ff_multiplier=4):
         super().__init__()
         # embedding layer
