@@ -5,14 +5,16 @@ from update_utilities import update_utilities_class
 import os
 import numpy as np
 import time
+import copy
 
 class train_test_loop_class:
     def __init__(self, model:torch.nn.Module, 
                  train_loader:torch.utils.data.DataLoader,
                  val_loader:torch.utils.data.DataLoader,
-                 test_loader:torch.utils.data.DataLoader,
-                 epochs: int, print_every_n_batch: int,
-                 device,model_name, optimizer,calculate_accuracy,problem_type,overwrite_message,update_loss_fn=False):
+                 test_loader, epochs, print_every_n_batch,
+                 device,model_name, optimizer,calculate_accuracy,problem_type,overwrite_message,update_loss_fn=False,
+                 print_result = True, print_full = True, lr_rate_tuning=False, 
+                 clip_batch=False,clip_batch_size=32, lr_start = -5, lr_end = -2):
         
         # initialize variables
         self.train_loader,self.test_loader, self.val_loader = train_loader,test_loader, val_loader
@@ -22,6 +24,11 @@ class train_test_loop_class:
         self.print_progress = print_every_n_batch
         self.problem_type = problem_type
         self.overwrite_message = overwrite_message
+        self.print_result, self.print_full = print_result, print_full
+        self.lr_rate_tuning = lr_rate_tuning
+        self.clip_batch = clip_batch
+        self.clip_batch_size = clip_batch_size
+        self.lr_start, self.lr_end = lr_start, lr_end
         
         # create folder to hold model stats
         model_stats_folder = f"{self.model_name} stats"
@@ -62,7 +69,7 @@ class train_test_loop_class:
         
         # update and import loss_functions class
         if update_loss_fn:
-            print("update and import the loss_functions module\n")
+            if (print_result & print_full): print("update and import the loss_functions module\n")
             update_file = update_utilities_class(file_name="loss_functions.py",current_path=os.getcwd())
             update_file.run()
         
@@ -74,7 +81,45 @@ class train_test_loop_class:
             print(f"{self.problem_type} Problem Type is not predefined in the loss_functions_class, need to be added manually")
         self.loss_fn = loss_fn
         
-        print("\nAll initialized, ready to go!")
+        if (print_result & print_full): print("\nAll initialized, ready to go!")
+    
+    def lr_tuning(self,dataloader,optimizer,start,end,clip_batch, batch_size):
+        assert start-end < 0, "start and end should be negative where start less than end"
+        if (self.print_result & self.print_full): print("learning rate tuning\n")
+        model = copy.deepcopy(self.model)
+        model.train()
+        num_step = -(start-end) * 40 + 1
+        lre = torch.linspace(start,end,num_step)
+        lrs = 10**lre
+        lossi = []
+        i = 0
+        for batch_inputs, batch_labels in dataloader:
+            if clip_batch:
+                batch_inputs, batch_labels = batch_inputs[:min(batch_size,len(batch_inputs))], batch_labels[:min(batch_size,len(batch_labels))]
+            # define the learning rate
+            for g in optimizer.param_groups:
+                g['lr'] = lrs[i]
+            i += 1
+            # regular forward pass and backpropogation
+            batch_inputs, batch_labels = batch_inputs.to(self.device), batch_labels.to(self.device)
+            optimizer.zero_grad()
+
+            model_outputs = model(batch_inputs)
+            if "Binary" in self.problem_type:
+                model_outputs = model_outputs.squeeze()
+                loss = self.loss_fn(model_outputs,batch_labels.float())
+            elif len(model_outputs.shape) == 2:
+                loss = self.loss_fn(model_outputs,batch_labels)
+            else:
+                loss = self.loss_fn(torch.flatten(model_outputs,end_dim=1),torch.flatten(batch_labels,end_dim=1))
+            loss.backward()
+            optimizer.step()
+            lossi.append(loss.detach().cpu().item())
+            if i == num_step:
+                if (self.print_result & self.print_full): print("learning rate tuning finished\n")
+                del model
+                return lossi
+
     
     def test(self,mode):
         self.model.eval()
@@ -92,8 +137,10 @@ class train_test_loop_class:
                 if "Binary" in self.problem_type:
                     model_outputs = model_outputs.squeeze()
                     loss = self.loss_fn(model_outputs,batch_labels.float())
-                else:
+                elif len(model_outputs.shape) == 2:
                     loss = self.loss_fn(model_outputs,batch_labels)
+                else:
+                    loss = self.loss_fn(torch.flatten(model_outputs,end_dim=1),torch.flatten(batch_labels,end_dim=1))
                 batch_loss += loss
                 if self.calculate_accuracy:
                     if "Binary" in self.problem_type:
@@ -136,19 +183,19 @@ class train_test_loop_class:
         
         if self.overwrite_message:
             m = f"Basic Specs\n----------------------------------------------------"
-            print(m)
+            if (self.print_result & self.print_full): print(m)
             f.write("\n"+m)
             sample_inputs, _ = next(iter(self.train_loader))
             m = f"Input Size: {sample_inputs.shape}\n"
-            print(m)
+            if (self.print_result & self.print_full): print(m)
             f.write("\n"+m)
             m = "\nModel Specs: \n"
-            print(m)
+            if (self.print_result & self.print_full): print(m)
             f.write("\n"+m)
-            print(self.model)
+            if (self.print_result & self.print_full): print(self.model)
             print(self.model,file=f)
             m = "\n\n"
-            print(m)
+            if (self.print_result & self.print_full): print(m)
             f.write("\n"+m)
         
         f.write("\n\nTraining Information\n" + "-"*80)
@@ -164,22 +211,22 @@ class train_test_loop_class:
         
         # print initial message
         m = f"Training Begin\n----------------------------------------------------"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         m = f"There are {self.epochs} epochs, and for each epoch, there are {len(self.train_loader)} batches of training data"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         m = f"Total Training Steps: {num_steps}"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         m = f"Total Displaying Information: {total_print_progress_cycle}"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         m = f"Optimizer name - {self.optimizer.__class__.__name__} learning rate: {self.optimizer.param_groups[-1]['lr']}"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         m = f"lowest_val_loss started with {lowest_val_loss}\n"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         
         # initializing
@@ -193,6 +240,10 @@ class train_test_loop_class:
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
         
+        if self.lr_rate_tuning:
+            lossi = self.lr_tuning(self.train_loader,self.optimizer,self.lr_start,self.lr_end,self.clip_batch,self.clip_batch_size)
+            return lossi
+
         # training loop
         for e in range(self.epochs):
             for batch_inputs, batch_labels in self.train_loader:
@@ -208,8 +259,10 @@ class train_test_loop_class:
                 if "Binary" in self.problem_type:
                     model_outputs = model_outputs.squeeze()
                     loss = self.loss_fn(model_outputs,batch_labels.float())
-                else:
+                elif len(model_outputs.shape) == 2:
                     loss = self.loss_fn(model_outputs,batch_labels)
+                else:
+                    loss = self.loss_fn(torch.flatten(model_outputs,end_dim=1),torch.flatten(batch_labels,end_dim=1))
                 loss.backward()
                 self.optimizer.step()
                 
@@ -238,11 +291,11 @@ class train_test_loop_class:
                     # print message
                     m = f"\n\nMessage: {print_progress_cycle} - "\
                           +f"Progress Summary - {batch_count} batches\n--------------------------------"
-                    print(m)
+                    if (self.print_result & self.print_full): print(m)
                     f.write("\n"+m)
                     m = f"Epoch: {e+1} / {self.epochs} || Batch: {step} / {num_steps} || " \
                           + f"Print Cycle: {print_progress_cycle} / {total_print_progress_cycle}"
-                    print(m)
+                    if (self.print_result & self.print_full): print(m)
                     f.write("\n"+m)
                     
                     validation_loss, validation_acc = self.test(mode="validation")
@@ -253,7 +306,9 @@ class train_test_loop_class:
                     # print message
                     m = f"Average per-Batch Training Loss: {avg_batch_loss:.4f} || " \
                           + f"Average per-Batch Validation Loss: {validation_loss:.4f}"
-                    print(m)
+                    if (self.print_result & (not self.print_full)): 
+                        print(f"Batch: {step} / {num_steps} || " + m)
+                    if (self.print_result & self.print_full): print(m)
                     f.write("\n"+m)
                     
                     batch_loss = 0
@@ -268,6 +323,8 @@ class train_test_loop_class:
                         m = f"Average per-Batch Training Accuracy: {avg_batch_acc:.2f}% || " \
                               + f"Average per-Batch Validation Accuracy: {validation_acc:.2f}%"
                         print(m)
+                        if (self.print_result & (not self.print_full)): 
+                            print()
                         f.write("\n"+m)
                         
                         batch_acc = 0
@@ -282,20 +339,20 @@ class train_test_loop_class:
                         
                         # print message
                         m = "\nModel Improvement\n--------------------------------"
-                        print(m)
+                        if (self.print_result & self.print_full): print(m)
                         f.write("\n"+m)
                         m = f"Average per-Batch Training Loss has decreased by {train_loss_perc_decrease:.2f}%"
-                        print(m)
+                        if (self.print_result & self.print_full): print(m)
                         f.write("\n"+m)
                         m = f"Average per-Batch Validation Loss has decreased by {val_loss_perc_decrease:.2f}%\n"
-                        print(m)
+                        if (self.print_result & self.print_full): print(m)
                         f.write("\n"+m)
                         
                         # if validation loss is the lowest, save the model as the best model weights
                         if validation_loss.cpu() < lowest_val_loss:
                             save_path = folder_path + r"/"+self.model_name+"_best.pth"
                             m = f"Val Loss decreased from {lowest_val_loss:4f} to {validation_loss.cpu():4f} - Saving the Best Model\n"
-                            print(m)
+                            if (self.print_result & self.print_full): print(m)
                             f.write("\n"+m+"\n")
                             torch.save(self.model.state_dict(),save_path)
                             lowest_val_loss = validation_loss.cpu()
@@ -308,7 +365,7 @@ class train_test_loop_class:
                         time_spent = np.round(time_spent/60,2)
                         unit = "hours"
                     m = f"This printing cycle took {time_spent} {unit}\n"
-                    print(m)
+                    if (self.print_result & self.print_full): print(m)
                     f.write("\n"+m)
                     start = time.time()
                     
@@ -323,7 +380,7 @@ class train_test_loop_class:
         # outside epoch for loop
         save_path = folder_path + r"/"+self.model_name+"_last.pth"
         m = "Saving the Last Model\n"
-        print(m)
+        if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
         torch.save(self.model.state_dict(),save_path)
         
