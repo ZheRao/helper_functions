@@ -192,6 +192,16 @@ class train_test_loop_class:
             m = "\nModel Specs: \n"
             if (self.print_result & self.print_full): print(m)
             f.write("\n"+m)
+            num_para = sum(p.numel() for p in self.model.parameters())
+            if num_para > 1e6:
+                num_para /= 1e6
+                unit = "million"
+            else:
+                num_para /= 1e3
+                unit = "thousand"
+            m = f"Total number of Parameters {round(num_para,2)} {unit}\n"
+            if (self.print_result & self.print_full): print(m)
+            f.write("\n"+m)
             if (self.print_result & self.print_full): print(self.model)
             print(self.model,file=f)
             m = "\n\n"
