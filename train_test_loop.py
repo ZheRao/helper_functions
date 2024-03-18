@@ -364,6 +364,9 @@ class train_test_loop_class:
                             if val_loss_perc_decrease < 0:
                                 count_decrease += 1
                                 if count_decrease == 2:
+                                    m = "\nEarly Stopping .......\n"
+                                    print(m)
+                                    f.write("\n"+m)
                                     break
                             else:
                                 count_decrease = 0
@@ -375,7 +378,8 @@ class train_test_loop_class:
                             m = f"Val Loss decreased from {lowest_val_loss:4f} to {validation_loss.cpu():4f} - Saving the Best Model\n"
                             if (self.print_result & self.print_full): print(m)
                             f.write("\n"+m+"\n")
-                            torch.save(self.model.state_dict(),save_path)
+                            torch.save(self.model.cpu().state_dict(),save_path)
+                            self.model.to(self.device)
                             lowest_val_loss = validation_loss.cpu()
                             np.save(os.path.join(self.model_folder,f"{self.model_name}_lowest_val_loss.npy"),lowest_val_loss)
                     end = time.time()
@@ -403,7 +407,8 @@ class train_test_loop_class:
         m = "Saving the Last Model\n"
         if (self.print_result & self.print_full): print(m)
         f.write("\n"+m)
-        torch.save(self.model.state_dict(),save_path)
+        torch.save(self.model.cpu().state_dict(),save_path)
+        self.model.to(self.device)
         
         
         # save losses/accuracies
